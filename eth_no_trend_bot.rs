@@ -11,13 +11,13 @@ use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, Signature, U256, H256};
 use ethers::utils::keccak256;
 use std::str::FromStr;
+use std::env;
 
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
-const PRIVATE_KEY: &str = "0x6cbe6580d99aa3a3bf1d7d93e5df6024d8d1cedb080526f4c834196fa2fe156f";
 const POLYMARKET_ADDRESS: &str = "0x6C83e9bd90C67fDb623ff6E46f6Ef8C4EC5A1cba";
-const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY";
+const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/Vwy188P6gCu8mAUrbObWH";
 
 const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
@@ -326,7 +326,9 @@ impl EthNoTrendBot {
             return Err(format!("❌ Invalid TRADE_SIDE: {}. Must be 'YES', 'NO', or 'BOTH'", TRADE_SIDE).into());
         }
 
-        let wallet = PRIVATE_KEY.parse::<LocalWallet>()?;
+        // Initialize wallet (Reads from .env or tmux export)
+        let private_key = env::var("PRIVATE_KEY").expect("🚨 PRIVATE_KEY not found! Set it in .env or export it.");
+        let wallet = private_key.parse::<LocalWallet>()?;
         let wallet_address = wallet.address();
         let polymarket_addr = Address::from_str(POLYMARKET_ADDRESS)?;
 
