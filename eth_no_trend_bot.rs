@@ -15,11 +15,8 @@ use std::str::FromStr;
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
 
-use std::env;
-fn load_private_key() -> String {
-    env::var("PRIVATE_KEY")
-        .expect("PRIVATE_KEY environment variable is not set")
-}
+const PRIVATE_KEY: &str = "YOUR_ACTUAL_PRIVATE_KEY_HERE";
+let wallet = PRIVATE_KEY.parse::<LocalWallet>()?;
 
 const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
 const TRADE_SIDE: &str = "BOTH"; // Options: "YES", "NO", or "BOTH"
@@ -611,7 +608,6 @@ fn init_csv_log() -> Result<(), Box<dyn std::error::Error>> {
 // ==========================================
 
 fn main() {
-    let private_key = load_private_key();
     match EthNoTrendBot::new() {
         Ok(mut bot) => {
             if let Err(e) = bot.run() {
