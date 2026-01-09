@@ -16,17 +16,9 @@ use std::str::FromStr;
 // ==========================================
 
 use std::env;
-
-fn main() {
-    match env::var("PRIVATE_KEY") {
-        Ok(private_key) => {
-            // Use the private key
-        }
-        Err(_) => {
-            eprintln!("PRIVATE_KEY environment variable is not set");
-            std::process::exit(1);
-        }
-    }
+fn load_private_key() -> String {
+    env::var("PRIVATE_KEY")
+        .expect("PRIVATE_KEY environment variable is not set")
 }
 
 const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
@@ -619,6 +611,7 @@ fn init_csv_log() -> Result<(), Box<dyn std::error::Error>> {
 // ==========================================
 
 fn main() {
+    let private_key = load_private_key();
     match EthNoTrendBot::new() {
         Ok(mut bot) => {
             if let Err(e) = bot.run() {
