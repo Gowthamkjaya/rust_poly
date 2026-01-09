@@ -14,7 +14,3 @@ hex = "0.4"
 [[bin]]
 name = "eth_no_trend_bot"
 path = "eth_no_trend_bot.rs"
-
-[[bin]]
-name = "eth_no_trend_bot_complete"
-path = "eth_no_trend_bot_complete.rs"
