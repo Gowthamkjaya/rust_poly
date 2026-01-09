@@ -14,9 +14,22 @@ use std::str::FromStr;
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
-const PRIVATE_KEY: &str = "0xbbd185bb356315b5f040a2af2fa28549177f3087559bb76885033e9cf8e8bf34";
-const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
 
+use std::env;
+
+fn main() {
+    match env::var("PRIVATE_KEY") {
+        Ok(private_key) => {
+            // Use the private key
+        }
+        Err(_) => {
+            eprintln!("PRIVATE_KEY environment variable is not set");
+            std::process::exit(1);
+        }
+    }
+}
+
+const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
 const TRADE_SIDE: &str = "BOTH"; // Options: "YES", "NO", or "BOTH"
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
