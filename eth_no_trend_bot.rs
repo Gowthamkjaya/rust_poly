@@ -1,5 +1,6 @@
 use chrono::{Utc, TimeZone};
 use reqwest::blocking::Client;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -11,19 +12,22 @@ use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, Signature, U256, H256};
 use ethers::utils::keccak256;
 use std::str::FromStr;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use base64::{Engine as _, engine::general_purpose};
 use std::env;
 
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
 const POLYMARKET_ADDRESS: &str = "0x6C83e9bd90C67fDb623ff6E46f6Ef8C4EC5A1cba";
-const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/Vwy188P6gCu8mAUrbObWH";
+const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY";
 
 const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 5;
+const POSITION_SIZE: u32 = 25;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -163,6 +167,24 @@ struct OrderStatus {
     #[serde(rename = "avgFillPrice")]
     avg_fill_price: Option<String>,
     price: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ApiCredentials {
+    #[serde(rename = "apiKey")]
+    api_key: String,
+    #[serde(rename = "secret")]
+    secret: String,
+    #[serde(rename = "passphrase")]
+    passphrase: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeriveApiKeyResponse {
+    #[serde(rename = "apiKey")]
+    api_key: String,
+    secret: String,
+    passphrase: String,
 }
 
 // ==========================================
@@ -309,6 +331,7 @@ struct EthNoTrendBot {
     signature_type: u8,
     active_trade: bool,
     traded_markets: HashSet<String>,
+    api_creds: Option<ApiCredentials>,
 }
 
 impl EthNoTrendBot {
@@ -326,7 +349,6 @@ impl EthNoTrendBot {
             return Err(format!("❌ Invalid TRADE_SIDE: {}. Must be 'YES', 'NO', or 'BOTH'", TRADE_SIDE).into());
         }
 
-        // Initialize wallet (Reads from .env or tmux export)
         let private_key = env::var("PRIVATE_KEY").expect("🚨 PRIVATE_KEY not found! Set it in .env or export it.");
         let wallet = private_key.parse::<LocalWallet>()?;
         let wallet_address = wallet.address();
@@ -342,9 +364,7 @@ impl EthNoTrendBot {
         
         let signer = Eip712Signer::new(wallet.clone());
         
-        println!("✅ Client Ready. Trading as: {:?}\n", trading_address);
-
-        Ok(Self {
+        let mut bot = Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()?,
@@ -355,7 +375,89 @@ impl EthNoTrendBot {
             signature_type,
             active_trade: false,
             traded_markets: HashSet::new(),
-        })
+            api_creds: None,
+        };
+
+        // Create API credentials
+        bot.create_or_derive_api_creds()?;
+        
+        println!("✅ Client Ready. Trading as: {:?}\n", trading_address);
+
+        Ok(bot)
+    }
+
+    fn create_or_derive_api_creds(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("🔑 Creating API credentials...");
+        
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64;
+        let message = format!("This message attests that I control the given wallet\nnonce: {}", nonce);
+        
+        // Sign the message
+        let signature = self.wallet.sign_message(message.as_bytes())?;
+        let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
+        
+        // Derive API key from CLOB
+        let url = format!("{}/auth/derive-api-key", HOST);
+        let payload = json!({
+            "address": format!("{:?}", self.wallet.address()).to_lowercase(),
+            "timestamp": nonce,
+            "signature": sig_hex,
+            "nonce": nonce
+        });
+        
+        println!("   📡 Deriving API key from CLOB...");
+        let response = self.client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()?;
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().unwrap_or_default();
+            return Err(format!("Failed to derive API key: HTTP {} - {}", status, error_text).into());
+        }
+        
+        let creds: DeriveApiKeyResponse = response.json()?;
+        
+        self.api_creds = Some(ApiCredentials {
+            api_key: creds.api_key.clone(),
+            secret: creds.secret,
+            passphrase: creds.passphrase,
+        });
+        
+        println!("   ✅ API credentials obtained: {}", creds.api_key);
+        
+        Ok(())
+    }
+
+    fn create_auth_headers(&self, method: &str, request_path: &str, body: &str) -> Result<HeaderMap, Box<dyn std::error::Error>> {
+        let creds = self.api_creds.as_ref()
+            .ok_or("API credentials not initialized")?;
+        
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs().to_string();
+        
+        // Create signature: timestamp + method + requestPath + body
+        let message = format!("{}{}{}{}", timestamp, method.to_uppercase(), request_path, body);
+        
+        // HMAC-SHA256 signature
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac = HmacSha256::new_from_slice(creds.secret.as_bytes())
+            .map_err(|_| "Invalid HMAC key")?;
+        mac.update(message.as_bytes());
+        let signature = mac.finalize();
+        let sig_base64 = general_purpose::STANDARD.encode(signature.into_bytes());
+        
+        let mut headers = HeaderMap::new();
+        headers.insert("POLY-ADDRESS", HeaderValue::from_str(&format!("{:?}", self.wallet.address()).to_lowercase())?);
+        headers.insert("POLY-SIGNATURE", HeaderValue::from_str(&sig_base64)?);
+        headers.insert("POLY-TIMESTAMP", HeaderValue::from_str(&timestamp)?);
+        headers.insert("POLY-NONCE", HeaderValue::from_str(&timestamp)?);
+        headers.insert("POLY-API-KEY", HeaderValue::from_str(&creds.api_key)?);
+        headers.insert("POLY-PASSPHRASE", HeaderValue::from_str(&creds.passphrase)?);
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        
+        Ok(headers)
     }
 
     fn floor_round(&self, n: f64, decimals: u32) -> f64 {
@@ -569,12 +671,18 @@ impl EthNoTrendBot {
             signature: sig_hex,
         };
 
+        // Serialize body for auth headers
+        let body = serde_json::to_string(&request)?;
+        
+        // Create authenticated headers
+        let headers = self.create_auth_headers("POST", "/order", &body)?;
+
         // POST to API
         let url = format!("{}/order", HOST);
         let response = self.client
             .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&request)
+            .headers(headers)
+            .body(body)
             .send()?;
 
         if !response.status().is_success() {
@@ -622,33 +730,43 @@ impl EthNoTrendBot {
     }
 
     fn check_order_status(&self, order_id: &str) -> Result<(bool, f64), Box<dyn std::error::Error>> {
-        let url = format!("{}/order/{}", HOST, order_id);
+        let request_path = format!("/order/{}", order_id);
+        let url = format!("{}{}", HOST, request_path);
         
         for attempt in 1..=3 {
-            match self.client.get(&url).send() {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        let order: OrderStatus = resp.json()?;
-                        if let Some(status) = order.status {
-                            if status == "MATCHED" || status == "FILLED" || status == "COMPLETED" {
-                                let price = if let Some(avg) = order.avg_fill_price {
-                                    avg.parse::<f64>().unwrap_or(0.0)
-                                } else if let Some(p) = order.price {
-                                    p.parse::<f64>().unwrap_or(0.0)
-                                } else {
-                                    0.0
-                                };
-                                return Ok((true, price));
+            // Create authenticated headers
+            match self.create_auth_headers("GET", &request_path, "") {
+                Ok(headers) => {
+                    match self.client.get(&url).headers(headers).send() {
+                        Ok(resp) => {
+                            if resp.status().is_success() {
+                                let order: OrderStatus = resp.json()?;
+                                if let Some(status) = order.status {
+                                    if status == "MATCHED" || status == "FILLED" || status == "COMPLETED" {
+                                        let price = if let Some(avg) = order.avg_fill_price {
+                                            avg.parse::<f64>().unwrap_or(0.0)
+                                        } else if let Some(p) = order.price {
+                                            p.parse::<f64>().unwrap_or(0.0)
+                                        } else {
+                                            0.0
+                                        };
+                                        return Ok((true, price));
+                                    }
+                                }
+                                return Ok((false, 0.0));
+                            }
+                        },
+                        Err(e) => {
+                            if attempt < 3 {
+                                println!("⚠️ Status check attempt {}/3 failed: {}", attempt, e);
+                                thread::sleep(Duration::from_secs(1));
                             }
                         }
-                        return Ok((false, 0.0));
                     }
                 },
                 Err(e) => {
-                    if attempt < 3 {
-                        println!("⚠️ Status check attempt {}/3 failed: {}", attempt, e);
-                        thread::sleep(Duration::from_secs(1));
-                    }
+                    println!("⚠️ Failed to create auth headers: {}", e);
+                    thread::sleep(Duration::from_secs(1));
                 }
             }
         }
@@ -657,8 +775,11 @@ impl EthNoTrendBot {
     }
 
     fn cancel_order(&self, order_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("{}/order/{}", HOST, order_id);
-        let _ = self.client.delete(&url).send()?;
+        let request_path = format!("/order/{}", order_id);
+        let url = format!("{}{}", HOST, request_path);
+        
+        let headers = self.create_auth_headers("DELETE", &request_path, "")?;
+        let _ = self.client.delete(&url).headers(headers).send()?;
         println!("   🚫 Cancelled order {}", order_id);
         Ok(())
     }
