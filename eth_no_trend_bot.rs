@@ -10,13 +10,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ethers::signers::{LocalWallet, Signer};
 use ethers::types::Address;
 use std::str::FromStr;
+use std::env;
 
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
 
-const PRIVATE_KEY: &str = "YOUR_ACTUAL_PRIVATE_KEY_HERE";
-let wallet = PRIVATE_KEY.parse::<LocalWallet>()?;
 
 const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
 const TRADE_SIDE: &str = "BOTH"; // Options: "YES", "NO", or "BOTH"
@@ -144,7 +143,9 @@ impl EthNoTrendBot {
         }
 
         // Initialize wallet
-        let wallet = PRIVATE_KEY.parse::<LocalWallet>()?;
+        // Initialize wallet (Reads from .env or tmux export)
+        let private_key = env::var("PRIVATE_KEY").expect("🚨 PRIVATE_KEY not found! Set it in .env or export it.");
+        let wallet = private_key.parse::<LocalWallet>()?;
         let wallet_address = wallet.address();
         let polymarket_addr = Address::from_str(POLYMARKET_ADDRESS)?;
 
@@ -608,6 +609,7 @@ fn init_csv_log() -> Result<(), Box<dyn std::error::Error>> {
 // ==========================================
 
 fn main() {
+    dotenv::dotenv().ok();
     match EthNoTrendBot::new() {
         Ok(mut bot) => {
             if let Err(e) = bot.run() {
