@@ -348,10 +348,10 @@ impl EthNoTrendBot {
     }
 
     fn monitor_market(&mut self, market: MarketData, ts: u64) {
-        println!("\n{'='*60}");
+        println!("\n{}", "=".repeat(60));
         println!("📊 MONITORING: {}", market.title);
         println!("🔗 Link: {}", market.link);
-        println!("{'='*60}");
+        println!("\n{}", "=".repeat(60));
 
         let start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         
