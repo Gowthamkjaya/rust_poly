@@ -13,6 +13,7 @@ use ethers::types::{Address, Signature, U256, H256};
 use ethers::utils::keccak256;
 use std::str::FromStr;
 use hmac::{Hmac, Mac};
+use futures::executor::block_on; // Add this with your other imports
 use sha2::Sha256;
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
@@ -393,7 +394,7 @@ impl EthNoTrendBot {
         let message = format!("This message attests that I control the given wallet\nnonce: {}", nonce);
         
         // Sign the message
-        let signature = self.wallet.sign_message(message.as_bytes())?;
+        let signature = block_on(self.wallet.sign_message(message.as_bytes()))?;
         let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
         
         // Derive API key from CLOB
