@@ -26,7 +26,7 @@ const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 5;
+const POSITION_SIZE: u32 = 25;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -397,16 +397,20 @@ impl EthNoTrendBot {
         // This is the exact message format used by py_clob_client
         let message = format!("This message attests that I control the given wallet\nnonce: {}", timestamp);
         
-        println!("   📝 Signing authentication message...");
+        println!("   📝 Message to sign: {}", message.split('\n').collect::<Vec<_>>()[0]);
+        println!("   🔢 Timestamp: {}", timestamp);
         
         // Ethereum signed message prefix
         let eth_message = format!("\x19Ethereum Signed Message:\n{}{}", message.len(), message);
         let message_hash = H256::from(keccak256(eth_message.as_bytes()));
         
+        println!("   🔏 Signing with wallet: {:?}", self.wallet.address());
+        
         // Sign the hash synchronously
         let signature = self.wallet.sign_hash(message_hash)?;
         let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
         
+        println!("   ✍️  Signature: {}...", &sig_hex[..20]);
         println!("   📡 Requesting API credentials from CLOB...");
         
         // Call the API to derive credentials
@@ -418,22 +422,29 @@ impl EthNoTrendBot {
             "signature": sig_hex
         });
         
+        println!("   🌐 URL: {}", url);
+        println!("   📤 Payload address: {}", format!("{:?}", self.wallet.address()).to_lowercase());
+        
         let response = self.client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()?;
         
+        println!("   📥 Response status: {}", response.status());
+        
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().unwrap_or_default();
-            eprintln!("   ❌ API credential creation failed: HTTP {} - {}", status, error_text);
-            eprintln!("   💡 Trying alternative: continuing without authentication");
-            eprintln!("   💡 Note: Orders may fail with 401 errors");
+            println!("   ❌ API credential creation failed: HTTP {} - {}", status, error_text);
+            println!("   💡 Continuing without authentication (orders will fail)");
             return Ok(()); // Don't fail completely, just warn
         }
         
-        let creds: DeriveApiKeyResponse = response.json()?;
+        let response_text = response.text()?;
+        println!("   📄 Response body: {}", response_text);
+        
+        let creds: DeriveApiKeyResponse = serde_json::from_str(&response_text)?;
         
         self.api_creds = Some(ApiCredentials {
             api_key: creds.api_key.clone(),
