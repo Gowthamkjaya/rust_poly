@@ -1,3 +1,4 @@
+use std::env;
 use chrono::{Utc, TimeZone};
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
@@ -14,7 +15,6 @@ use ethers::utils::keccak256;
 use std::str::FromStr;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use std::env;
 use base64::{Engine as _, engine::general_purpose};
 
 // ==========================================
@@ -27,7 +27,7 @@ const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 5;
+const POSITION_SIZE: u32 = 25;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -594,6 +594,11 @@ impl EthNoTrendBot {
         }
 
         let market_data = &markets[0];
+        
+        // Debug: Print the entire market data structure
+        println!("   📄 DEBUG: Full market data:");
+        println!("{}", serde_json::to_string_pretty(market_data).unwrap_or_else(|_| "Cannot serialize".to_string()));
+        
         let token_ids: Vec<String> = serde_json::from_str(
             market_data["clobTokenIds"].as_str().ok_or("Invalid clobTokenIds")?
         )?;
@@ -604,8 +609,8 @@ impl EthNoTrendBot {
 
         let title = event["title"].as_str().unwrap_or(slug).to_string();
         println!("   ✅ Market found: {}", title);
-        println!("   🎯 YES Token: {}", token_ids[0]);
-        println!("   🎯 NO Token: {}", token_ids[1]);
+        println!("   🎯 YES Token (clobTokenIds[0]): {}", token_ids[0]);
+        println!("   🎯 NO Token (clobTokenIds[1]): {}", token_ids[1]);
 
         Ok(Some(MarketData {
             slug: slug.to_string(),
