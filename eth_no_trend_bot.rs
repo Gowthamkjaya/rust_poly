@@ -856,48 +856,66 @@ impl EthNoTrendBot {
 
             let yes_bid = yes_book.best_bid.unwrap_or(0.0);
             let no_bid = no_book.best_bid.unwrap_or(0.0);
-            let yes_ask = yes_book.best_ask.unwrap_or(999.0);
-            let no_ask = no_book.best_ask.unwrap_or(999.0);
+            
+            // Don't use 999 as default - use None to track if ask exists
+            let yes_ask_opt = yes_book.best_ask;
+            let no_ask_opt = no_book.best_ask;
             let yes_ask_size = yes_book.ask_size;
             let no_ask_size = no_book.ask_size;
 
-            if yes_ask > ABORT_ASK_PRICE || no_ask > ABORT_ASK_PRICE {
+            // 🚨 ABORT CHECK - Only if asks actually exist
+            let should_abort = 
+                (yes_ask_opt.is_some() && yes_ask_opt.unwrap() > ABORT_ASK_PRICE) ||
+                (no_ask_opt.is_some() && no_ask_opt.unwrap() > ABORT_ASK_PRICE);
+            
+            if should_abort {
                 println!("\n🚨 ABORT TRIGGERED: ASK price exceeded ${}", ABORT_ASK_PRICE);
-                println!("   YES ASK: ${:.2} | NO ASK: ${:.2}", yes_ask, no_ask);
+                println!("   YES ASK: ${:.2} | NO ASK: ${:.2}", 
+                    yes_ask_opt.unwrap_or(0.0), no_ask_opt.unwrap_or(0.0));
                 println!("   ⏭️ Skipping market {} and waiting for next market...\n", market.slug);
-                self.save_abort_log(&market, "BOTH", yes_ask.max(no_ask));
+                self.save_abort_log(&market, "BOTH", 
+                    yes_ask_opt.unwrap_or(0.0).max(no_ask_opt.unwrap_or(0.0)));
                 self.traded_markets.insert(market.slug.clone());
                 return;
             }
 
             print!("Monitoring {} | YES: ${:.2}/${:.2} ({}) | NO: ${:.2}/${:.2} ({}) | Target: ${:.2}   \r",
-                TRADE_SIDE, yes_bid, yes_ask, yes_ask_size as u32, no_bid, no_ask, no_ask_size as u32, ENTRY_PRICE);
+                TRADE_SIDE, yes_bid, yes_ask_opt.unwrap_or(0.0), yes_ask_size as u32, 
+                no_bid, no_ask_opt.unwrap_or(0.0), no_ask_size as u32, ENTRY_PRICE);
             io::stdout().flush().unwrap();
 
             let mut triggered_side = None;
             let mut triggered_token = None;
-            let mut triggered_ask = 0.0;
+            let mut triggered_ask = None;
 
-            if (TRADE_SIDE == "YES" || TRADE_SIDE == "BOTH") && yes_bid >= ENTRY_PRICE && yes_ask_size >= POSITION_SIZE as f64 {
+            // Only trigger if ask exists
+            if (TRADE_SIDE == "YES" || TRADE_SIDE == "BOTH") && 
+               yes_bid >= ENTRY_PRICE && 
+               yes_ask_size >= POSITION_SIZE as f64 && 
+               yes_ask_opt.is_some() {
                 triggered_side = Some("YES");
                 triggered_token = Some(market.yes_token.clone());
-                triggered_ask = yes_ask;
+                triggered_ask = yes_ask_opt;
             }
 
-            if (TRADE_SIDE == "NO" || TRADE_SIDE == "BOTH") && no_bid >= ENTRY_PRICE && no_ask_size >= POSITION_SIZE as f64 {
+            if (TRADE_SIDE == "NO" || TRADE_SIDE == "BOTH") && 
+               no_bid >= ENTRY_PRICE && 
+               no_ask_size >= POSITION_SIZE as f64 && 
+               no_ask_opt.is_some() {
                 if triggered_side.is_none() || (TRADE_SIDE == "BOTH" && no_bid > yes_bid) {
                     triggered_side = Some("NO");
                     triggered_token = Some(market.no_token.clone());
-                    triggered_ask = no_ask;
+                    triggered_ask = no_ask_opt;
                 }
             }
 
-            if !self.active_trade && triggered_side.is_some() {
+            if !self.active_trade && triggered_side.is_some() && triggered_ask.is_some() {
                 let side = triggered_side.unwrap();
                 let token = triggered_token.unwrap();
+                let ask = triggered_ask.unwrap();
                 
                 println!("\n🚀 ENTRY TRIGGERED: {} - Placing order...", side);
-                self.execute_trade(&market, side, &token, triggered_ask);
+                self.execute_trade(&market, side, &token, ask);
                 return;
             }
 
@@ -919,14 +937,22 @@ impl EthNoTrendBot {
 
         for attempt in 1..=20 {
             if let Some(current_book) = self.get_order_book_depth(token_id) {
-                let current_ask = current_book.best_ask.unwrap_or(999.0);
                 let current_bid = current_book.best_bid.unwrap_or(0.0);
                 
-                if current_ask > ABORT_ASK_PRICE {
-                    println!("\n🚨 ABORT during entry: ASK ${:.3} > ${}", current_ask, ABORT_ASK_PRICE);
-                    self.traded_markets.insert(market.slug.clone());
-                    return;
+                // Check abort only if ask exists
+                if let Some(current_ask) = current_book.best_ask {
+                    if current_ask > ABORT_ASK_PRICE {
+                        println!("\n🚨 ABORT during entry: ASK ${:.3} > ${}", current_ask, ABORT_ASK_PRICE);
+                        self.traded_markets.insert(market.slug.clone());
+                        return;
+                    }
+                } else {
+                    println!("⚠️ No ask available. Retrying in 1s...");
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
                 }
+                
+                let current_ask = current_book.best_ask.unwrap(); // Safe to unwrap now
 
                 if current_bid < ENTRY_PRICE - 0.02 {
                     println!("⚠️ Not tradeable. Bid: ${:.2}. Retrying in 1s...", current_bid);
