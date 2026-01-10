@@ -14,7 +14,6 @@ use ethers::utils::keccak256;
 use std::str::FromStr;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use std::env;
 use base64::{Engine as _, engine::general_purpose};
 
 // ==========================================
@@ -27,7 +26,7 @@ const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 5;
+const POSITION_SIZE: u32 = 25;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -354,11 +353,14 @@ impl EthNoTrendBot {
             .expect("🚨 PRIVATE_KEY environment variable not set! Export it with: export PRIVATE_KEY=0x...");
         
         let wallet = private_key.parse::<LocalWallet>()?;
-        let trading_address = wallet.address();
-        
-        // No proxy - trade directly with wallet address (like Python version)
-        let use_proxy = false;
-        let signature_type = 0;
+        let wallet_address = wallet.address();
+        let polymarket_addr = Address::from_str(POLYMARKET_ADDRESS)?;
+
+        let (use_proxy, signature_type, trading_address) = if wallet_address == polymarket_addr {
+            (false, 0, wallet_address)
+        } else {
+            (true, 1, polymarket_addr)
+        };
 
         init_csv_log()?;
         
