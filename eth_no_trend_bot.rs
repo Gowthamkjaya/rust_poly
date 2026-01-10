@@ -20,7 +20,6 @@ use base64::{Engine as _, engine::general_purpose};
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
-const PRIVATE_KEY: &str = "0x6cbe6580d99aa3a3bf1d7d93e5df6024d8d1cedb080526f4c834196fa2fe156f";
 const POLYMARKET_ADDRESS: &str = "0x6C83e9bd90C67fDb623ff6E46f6Ef8C4EC5A1cba";
 const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY";
 
