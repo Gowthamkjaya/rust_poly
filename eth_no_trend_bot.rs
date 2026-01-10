@@ -821,18 +821,17 @@ impl EthNoTrendBot {
         None
     }
 
-    fn monitor_market(&mut self, market: MarketData, _ts: u64) {
+    fn monitor_market(&mut self, market: MarketData, market_start_ts: u64) {
         println!("\n{}", "=".repeat(60));
         println!("📊 MONITORING: {}", market.title);
         println!("🔗 Link: {}", market.link);
         println!("{}", "=".repeat(60));
 
-        let start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let mut entry_window_start: Option<u64> = None;
         
         loop {
             let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            let elapsed = current_time - start_time;
+            let elapsed = current_time - market_start_ts;
             let time_until_close = 900 - elapsed;
 
             if time_until_close > MARKET_WINDOW {
