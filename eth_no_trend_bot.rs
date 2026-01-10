@@ -497,30 +497,16 @@ impl EthNoTrendBot {
 
     fn fetch_order_book(&self, token_id: &str) -> Result<OrderBook, Box<dyn std::error::Error>> {
         let url = format!("{}/book?token_id={}", HOST, token_id);
-        
-        println!("\n🔍 DEBUG: Fetching order book for token: {}", token_id);
-        println!("   URL: {}", url);
-        
-        let response = self.client.get(&url).send()?;
-        
-        println!("   Response Status: {}", response.status());
-        
-        let text = response.text()?;
-        println!("   Response Body (first 500 chars): {}", 
-            if text.len() > 500 { &text[..500] } else { &text });
-        
-        let resp: OrderBookResponse = serde_json::from_str(&text)?;
-        
-        println!("   Parsed - Asks count: {}, Bids count: {}", resp.asks.len(), resp.bids.len());
+        let resp: OrderBookResponse = self.client.get(&url)
+            .send()?
+            .json()?;
 
         let (best_ask, ask_size) = if let Some(ask) = resp.asks.iter()
             .min_by(|a, b| a.price.parse::<f64>().unwrap_or(f64::MAX)
                 .partial_cmp(&b.price.parse::<f64>().unwrap_or(f64::MAX))
                 .unwrap()) {
-            println!("   Best Ask: {} @ size {}", ask.price, ask.size);
             (Some(ask.price.parse::<f64>()?), ask.size.parse::<f64>()?)
         } else {
-            println!("   No asks available");
             (None, 0.0)
         };
 
@@ -528,10 +514,8 @@ impl EthNoTrendBot {
             .max_by(|a, b| a.price.parse::<f64>().unwrap_or(0.0)
                 .partial_cmp(&b.price.parse::<f64>().unwrap_or(0.0))
                 .unwrap()) {
-            println!("   Best Bid: {} @ size {}", bid.price, bid.size);
             (Some(bid.price.parse::<f64>()?), bid.size.parse::<f64>()?)
         } else {
-            println!("   No bids available");
             (None, 0.0)
         };
 
@@ -595,9 +579,19 @@ impl EthNoTrendBot {
 
         let market_data = &markets[0];
         
-        // Debug: Print the entire market data structure
-        println!("   📄 DEBUG: Full market data:");
-        println!("{}", serde_json::to_string_pretty(market_data).unwrap_or_else(|_| "Cannot serialize".to_string()));
+        // Check if market is ready
+        let is_ready = market_data["ready"].as_bool().unwrap_or(false);
+        let enable_orderbook = market_data["enableOrderBook"].as_bool().unwrap_or(false);
+        
+        if !is_ready {
+            println!("   ⚠️ Market not ready yet (ready: false)");
+            return Ok(None);
+        }
+        
+        if !enable_orderbook {
+            println!("   ⚠️ Order book not enabled for this market");
+            return Ok(None);
+        }
         
         let token_ids: Vec<String> = serde_json::from_str(
             market_data["clobTokenIds"].as_str().ok_or("Invalid clobTokenIds")?
@@ -609,6 +603,7 @@ impl EthNoTrendBot {
 
         let title = event["title"].as_str().unwrap_or(slug).to_string();
         println!("   ✅ Market found: {}", title);
+        println!("   ✅ Market is ready and has order book enabled");
         println!("   🎯 YES Token (clobTokenIds[0]): {}", token_ids[0]);
         println!("   🎯 NO Token (clobTokenIds[1]): {}", token_ids[1]);
 
