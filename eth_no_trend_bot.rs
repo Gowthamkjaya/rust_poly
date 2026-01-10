@@ -20,7 +20,7 @@ use base64::{Engine as _, engine::general_purpose};
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
-const POLYMARKET_ADDRESS: &str = "0x6eF7B34fA1476B1cEc89D1D54a665D7f2f13273c";
+const POLYMARKET_ADDRESS: &str = "0xC47167d407A91965fAdc7aDAb96F0fF586566bF7";
 const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/Vwy188P6gCu8mAUrbObWH";
 
 const TRADE_SIDE: &str = "BOTH";
