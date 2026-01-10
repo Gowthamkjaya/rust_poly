@@ -391,6 +391,24 @@ impl EthNoTrendBot {
     fn create_or_derive_api_creds(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("🔑 Creating API credentials...");
         
+        // First, check if credentials are provided via environment variables
+        if let (Ok(api_key), Ok(secret), Ok(passphrase)) = (
+            std::env::var("POLY_API_KEY"),
+            std::env::var("POLY_API_SECRET"),
+            std::env::var("POLY_API_PASSPHRASE")
+        ) {
+            println!("   ✅ Using API credentials from environment variables");
+            self.api_creds = Some(ApiCredentials {
+                api_key: api_key.clone(),
+                secret,
+                passphrase,
+            });
+            println!("   🔑 API Key: {}...{}", &api_key[..8], &api_key[api_key.len()-4..]);
+            return Ok(());
+        }
+        
+        println!("   💡 No environment credentials found, attempting to derive...");
+        
         // Create the message to sign for API key derivation
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
         
@@ -432,7 +450,6 @@ impl EthNoTrendBot {
         });
         
         println!("   🌐 URL: {}", url);
-        println!("   📤 Payload: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
         
         let response = self.client
             .post(&url)
@@ -446,7 +463,12 @@ impl EthNoTrendBot {
             let status = response.status();
             let error_text = response.text().unwrap_or_default();
             println!("   ❌ API credential creation failed: HTTP {} - {}", status, error_text);
-            println!("   💡 Continuing without authentication (orders will fail)");
+            println!();
+            println!("   💡 SOLUTION: Run your Python bot once to get API credentials, then:");
+            println!("   💡 export POLY_API_KEY=\"your_key\"");
+            println!("   💡 export POLY_API_SECRET=\"your_secret\"");
+            println!("   💡 export POLY_API_PASSPHRASE=\"your_passphrase\"");
+            println!();
             return Ok(()); // Don't fail completely, just warn
         }
         
