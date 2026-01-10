@@ -497,9 +497,15 @@ impl EthNoTrendBot {
 
     fn fetch_order_book(&self, token_id: &str) -> Result<OrderBook, Box<dyn std::error::Error>> {
         let url = format!("{}/book?token_id={}", HOST, token_id);
-        let resp: OrderBookResponse = self.client.get(&url)
-            .send()?
-            .json()?;
+        let response = self.client.get(&url).send()?;
+        
+        // If we get 404, log it
+        if response.status() == 404 {
+            println!("   ⚠️ 404: No order book for token {}", token_id);
+            println!("   💡 This token ID might not have an active CLOB order book");
+        }
+        
+        let resp: OrderBookResponse = response.json()?;
 
         let (best_ask, ask_size) = if let Some(ask) = resp.asks.iter()
             .min_by(|a, b| a.price.parse::<f64>().unwrap_or(f64::MAX)
@@ -579,14 +585,8 @@ impl EthNoTrendBot {
 
         let market_data = &markets[0];
         
-        // Check if market is ready
-        let is_ready = market_data["ready"].as_bool().unwrap_or(false);
+        // Check if order book is enabled (don't check ready - these markets never set it to true)
         let enable_orderbook = market_data["enableOrderBook"].as_bool().unwrap_or(false);
-        
-        if !is_ready {
-            println!("   ⚠️ Market not ready yet (ready: false)");
-            return Ok(None);
-        }
         
         if !enable_orderbook {
             println!("   ⚠️ Order book not enabled for this market");
@@ -603,9 +603,9 @@ impl EthNoTrendBot {
 
         let title = event["title"].as_str().unwrap_or(slug).to_string();
         println!("   ✅ Market found: {}", title);
-        println!("   ✅ Market is ready and has order book enabled");
-        println!("   🎯 YES Token (clobTokenIds[0]): {}", token_ids[0]);
-        println!("   🎯 NO Token (clobTokenIds[1]): {}", token_ids[1]);
+        println!("   ✅ Order book enabled");
+        println!("   🎯 YES Token: {}", token_ids[0]);
+        println!("   🎯 NO Token: {}", token_ids[1]);
 
         Ok(Some(MarketData {
             slug: slug.to_string(),
