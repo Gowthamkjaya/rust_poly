@@ -408,12 +408,21 @@ impl EthNoTrendBot {
         
         // Sign the hash synchronously
         let signature = self.wallet.sign_hash(message_hash)?;
-        let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
+        
+        // Convert to hex WITHOUT the 0x prefix first, then add it
+        let mut sig_bytes = signature.to_vec();
+        
+        // Adjust v value for Ethereum (27 or 28)
+        if sig_bytes[64] < 27 {
+            sig_bytes[64] += 27;
+        }
+        
+        let sig_hex = format!("0x{}", hex::encode(&sig_bytes));
         
         println!("   ✍️  Signature: {}...", &sig_hex[..20]);
         println!("   📡 Requesting API credentials from CLOB...");
         
-        // Call the API to derive credentials
+        // Call the API to derive credentials - NO L1 headers, just the POST body
         let url = format!("{}/auth/api-key", HOST);
         let payload = json!({
             "address": format!("{:?}", self.wallet.address()).to_lowercase(),
@@ -423,19 +432,11 @@ impl EthNoTrendBot {
         });
         
         println!("   🌐 URL: {}", url);
-        println!("   📤 Payload address: {}", format!("{:?}", self.wallet.address()).to_lowercase());
-        
-        // Add the L1 authentication headers
-        let mut headers = HeaderMap::new();
-        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-        headers.insert("POLY-ADDRESS", HeaderValue::from_str(&format!("{:?}", self.wallet.address()).to_lowercase())?);
-        headers.insert("POLY-SIGNATURE", HeaderValue::from_str(&sig_hex)?);
-        headers.insert("POLY-TIMESTAMP", HeaderValue::from_str(&timestamp.to_string())?);
-        headers.insert("POLY-NONCE", HeaderValue::from_str(&timestamp.to_string())?);
+        println!("   📤 Payload: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
         
         let response = self.client
             .post(&url)
-            .headers(headers)
+            .header("Content-Type", "application/json")
             .json(&payload)
             .send()?;
         
