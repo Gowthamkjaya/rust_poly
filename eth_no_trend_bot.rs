@@ -399,8 +399,12 @@ impl EthNoTrendBot {
         
         println!("   📝 Signing authentication message...");
         
-        // Sign the message with the wallet
-        let signature = self.wallet.sign_message(message.as_bytes())?;
+        // Ethereum signed message prefix
+        let eth_message = format!("\x19Ethereum Signed Message:\n{}{}", message.len(), message);
+        let message_hash = H256::from(keccak256(eth_message.as_bytes()));
+        
+        // Sign the hash synchronously
+        let signature = self.wallet.sign_hash(message_hash)?;
         let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
         
         println!("   📡 Requesting API credentials from CLOB...");
