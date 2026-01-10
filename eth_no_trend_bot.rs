@@ -353,16 +353,12 @@ impl EthNoTrendBot {
         let private_key = std::env::var("PRIVATE_KEY")
             .expect("🚨 PRIVATE_KEY environment variable not set! Export it with: export PRIVATE_KEY=0x...");
         
-        let private_key = env::var("PRIVATE_KEY").expect("🚨 PRIVATE_KEY not found! Set it in .env or export it.");
         let wallet = private_key.parse::<LocalWallet>()?;
-        let wallet_address = wallet.address();
-        let polymarket_addr = Address::from_str(POLYMARKET_ADDRESS)?;
-
-        let (use_proxy, signature_type, trading_address) = if wallet_address == polymarket_addr {
-            (false, 0, wallet_address)
-        } else {
-            (true, 1, polymarket_addr)
-        };
+        let trading_address = wallet.address();
+        
+        // No proxy - trade directly with wallet address (like Python version)
+        let use_proxy = false;
+        let signature_type = 0;
 
         init_csv_log()?;
         
@@ -391,13 +387,56 @@ impl EthNoTrendBot {
     }
 
     fn create_or_derive_api_creds(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("🔑 Attempting to create API credentials...");
+        println!("🔑 Creating API credentials...");
         
-        // For now, skip API credential derivation as it might not be required
-        // The Python py_clob_client handles this internally, but we can try without it
-        println!("   ⚠️  Skipping API credential derivation");
-        println!("   💡 Orders will be placed with EIP-712 signatures only");
-        println!("   💡 This may work if Polymarket accepts unsigned API requests\n");
+        // Create the message to sign for API key derivation
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+        
+        // This is the exact message format used by py_clob_client
+        let message = format!("This message attests that I control the given wallet\nnonce: {}", timestamp);
+        
+        println!("   📝 Signing authentication message...");
+        
+        // Sign the message with the wallet
+        let signature = self.wallet.sign_message(message.as_bytes())?;
+        let sig_hex = format!("0x{}", hex::encode(signature.to_vec()));
+        
+        println!("   📡 Requesting API credentials from CLOB...");
+        
+        // Call the API to derive credentials
+        let url = format!("{}/auth/api-key", HOST);
+        let payload = json!({
+            "address": format!("{:?}", self.wallet.address()).to_lowercase(),
+            "timestamp": timestamp,
+            "nonce": timestamp,
+            "signature": sig_hex
+        });
+        
+        let response = self.client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()?;
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().unwrap_or_default();
+            eprintln!("   ❌ API credential creation failed: HTTP {} - {}", status, error_text);
+            eprintln!("   💡 Trying alternative: continuing without authentication");
+            eprintln!("   💡 Note: Orders may fail with 401 errors");
+            return Ok(()); // Don't fail completely, just warn
+        }
+        
+        let creds: DeriveApiKeyResponse = response.json()?;
+        
+        self.api_creds = Some(ApiCredentials {
+            api_key: creds.api_key.clone(),
+            secret: creds.secret,
+            passphrase: creds.passphrase,
+        });
+        
+        println!("   ✅ API credentials obtained successfully");
+        println!("   🔑 API Key: {}...{}", &creds.api_key[..8], &creds.api_key[creds.api_key.len()-4..]);
         
         Ok(())
     }
