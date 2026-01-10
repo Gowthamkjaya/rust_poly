@@ -26,7 +26,7 @@ const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 5;
+const POSITION_SIZE: u32 = 25;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -425,9 +425,17 @@ impl EthNoTrendBot {
         println!("   🌐 URL: {}", url);
         println!("   📤 Payload address: {}", format!("{:?}", self.wallet.address()).to_lowercase());
         
+        // Add the L1 authentication headers
+        let mut headers = HeaderMap::new();
+        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        headers.insert("POLY-ADDRESS", HeaderValue::from_str(&format!("{:?}", self.wallet.address()).to_lowercase())?);
+        headers.insert("POLY-SIGNATURE", HeaderValue::from_str(&sig_hex)?);
+        headers.insert("POLY-TIMESTAMP", HeaderValue::from_str(&timestamp.to_string())?);
+        headers.insert("POLY-NONCE", HeaderValue::from_str(&timestamp.to_string())?);
+        
         let response = self.client
             .post(&url)
-            .header("Content-Type", "application/json")
+            .headers(headers)
             .json(&payload)
             .send()?;
         
