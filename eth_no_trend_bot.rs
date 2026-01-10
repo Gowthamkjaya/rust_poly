@@ -512,18 +512,13 @@ impl EthNoTrendBot {
         let signature = mac.finalize();
         let sig_base64 = general_purpose::STANDARD.encode(signature.into_bytes());
         
-        // API credentials are tied to the wallet address
+        // Match Python exactly - use wallet address, no POLY-OWNER header
         headers.insert("POLY-ADDRESS", HeaderValue::from_str(&format!("{:?}", self.wallet.address()).to_lowercase())?);
         headers.insert("POLY-SIGNATURE", HeaderValue::from_str(&sig_base64)?);
         headers.insert("POLY-TIMESTAMP", HeaderValue::from_str(&timestamp)?);
         headers.insert("POLY-NONCE", HeaderValue::from_str(&timestamp)?);
         headers.insert("POLY-API-KEY", HeaderValue::from_str(&creds.api_key)?);
         headers.insert("POLY-PASSPHRASE", HeaderValue::from_str(&creds.passphrase)?);
-        
-        // If using proxy, add the owner header
-        if self.use_proxy {
-            headers.insert("POLY-OWNER", HeaderValue::from_str(&format!("{:?}", self.trading_address).to_lowercase())?);
-        }
         
         Ok(headers)
     }
