@@ -10,8 +10,6 @@ polymarket-client-sdk = { git = "https://github.com/Polymarket/rs-clob-client.gi
 # Async runtime
 tokio = { version = "1.42", features = ["full"] }
 
-# Alloy for wallet/signing
-alloy = { version = "0.8", features = ["full", "signer-local"] }
 
 # Utilities
 anyhow = "1.0"
