@@ -1,4 +1,3 @@
-use std::env;
 use chrono::{Utc, TimeZone};
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
@@ -15,19 +14,20 @@ use ethers::utils::keccak256;
 use std::str::FromStr;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::env;
 use base64::{Engine as _, engine::general_purpose};
 
 // ==========================================
 // 📊 CONFIGURATION CONSTANTS
 // ==========================================
-const POLYMARKET_ADDRESS: &str = "0x6C83e9bd90C67fDb623ff6E46f6Ef8C4EC5A1cba";
-const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY";
+const POLYMARKET_ADDRESS: &str = "0x6eF7B34fA1476B1cEc89D1D54a665D7f2f13273c";
+const RPC_URL: &str = "https://polygon-mainnet.g.alchemy.com/v2/Vwy188P6gCu8mAUrbObWH";
 
 const TRADE_SIDE: &str = "BOTH";
 const ENTRY_PRICE: f64 = 0.96;
 const STOP_LOSS_PRICE: f64 = 0.89;
 const SUSTAIN_TIME: u64 = 3;
-const POSITION_SIZE: u32 = 25;
+const POSITION_SIZE: u32 = 5;
 const MARKET_WINDOW: u64 = 240;
 const POLLING_INTERVAL: u64 = 1;
 const ENTRY_TIMEOUT: u64 = 210;
@@ -349,6 +349,10 @@ impl EthNoTrendBot {
             return Err(format!("❌ Invalid TRADE_SIDE: {}. Must be 'YES', 'NO', or 'BOTH'", TRADE_SIDE).into());
         }
 
+        // Read private key from environment variable
+        let private_key = std::env::var("PRIVATE_KEY")
+            .expect("🚨 PRIVATE_KEY environment variable not set! Export it with: export PRIVATE_KEY=0x...");
+        
         let private_key = env::var("PRIVATE_KEY").expect("🚨 PRIVATE_KEY not found! Set it in .env or export it.");
         let wallet = private_key.parse::<LocalWallet>()?;
         let wallet_address = wallet.address();
